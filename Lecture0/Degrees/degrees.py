@@ -1,7 +1,7 @@
 import csv
 import sys
-from collections import deque
-from util import Node, StackFrontier, QueueFrontier
+from util import SearchFrontier
+from typing import Optional, List, Tuple
 
 # Maps names to a set of corresponding person_ids
 names = {}
@@ -84,74 +84,52 @@ def main():
             print(f"{i + 1}: {person1} and {person2} starred in {movie}")
 
 
-def shortest_path(source, target):
+def shortest_path(source: int, target: int) -> Optional[List[Tuple[int, int]]]:
     """
     Returns the shortest list of (movie_id, person_id) pairs
     that connect the source to the target.
 
     If no possible path, returns None.
     """
+    if source == target:
+        return []
 
-    # FRONTIERS (queues): storing person IDs
-    queue_source = deque([source])
-    queue_target = deque([target])
+    source_frontier = SearchFrontier(source)
+    target_frontier = SearchFrontier(target)
 
-    # NODE TRACKERS: map person_id → Node
-    frontier_source = {source: Node(source, None, None)}
-    frontier_target = {target: Node(target, None, None)}
+    meeting_node = None
 
-    # EXPLORED sets: person IDs already expanded
-    explored_source = set()
-    explored_target = set()
+    while source_frontier and target_frontier:
+        if len(source_frontier) <= len(target_frontier):
+            meeting_node = expand(source_frontier, target_frontier)
+        else:
+            meeting_node = expand(target_frontier, source_frontier)
 
-    while queue_source and queue_target:
-
-        # Expand from the source side
-        meeting = expand(queue_source, frontier_source, explored_source, frontier_target)
-        if meeting:
+        if meeting_node:
             break
 
-        # Expand from the target side
-        meeting = expand(queue_target, frontier_target, explored_target, frontier_source)
-        if meeting:
-            break
+    if not meeting_node:
+        return None
 
-    path_forward = []
-    node = frontier_source[meeting]
-    while node.parent is not None:
-        path_forward.append((node.action, node.state))
-        node = node.parent
-    path_forward.reverse()
-
-    path_backward = []
-    node = frontier_target[meeting]
-    while node.parent is not None:
-        path_backward.append((node.action, node.parent.state))
-        node = node.parent
+    path_forward = source_frontier.build_path_to(meeting_node, forward=True)
+    path_backward = target_frontier.build_path_to(meeting_node, forward=False)
 
     return path_forward + path_backward
 
 
-def expand(queue, frontier, explored, other_frontier):
-    """
-    Expand the next node in the frontier.
-    Returns the meeting person_id if found, otherwise None.
-    """
-    current_id = queue.popleft()
-    explored.add(current_id)
+def expand(frontier: SearchFrontier, other_frontier: SearchFrontier) -> Optional[int]:
+    current_id = frontier.pop()
 
     for movie_id, neighbor_id in neighbors_for_person(current_id):
-        if neighbor_id in explored or neighbor_id in frontier:
+        if frontier.contains(neighbor_id):
             continue
 
-        node = Node(state=neighbor_id, parent=frontier[current_id], action=movie_id)
-        frontier[neighbor_id] = node
-        queue.append(neighbor_id)
+        frontier.add(neighbor_id, frontier.nodes[current_id], movie_id)
 
-        if neighbor_id in other_frontier:
-            return neighbor_id 
+        if other_frontier.contains(neighbor_id):
+            return neighbor_id
 
-    return None 
+    return None
 
 
 def person_id_for_name(name):
